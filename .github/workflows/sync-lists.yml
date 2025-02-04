@@ -27,7 +27,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Run script to update robot and machine lists
         run: |
@@ -35,32 +35,33 @@ jobs:
 
       - name: Check for changes
         run: |
-          git diff --quiet || echo "changes_detected=true" >> $GITHUB_ENV
+          git diff --quiet counter_robots/data/ || echo "changes_detected=true" >> $GITHUB_ENV
         continue-on-error: true
 
       - name: Commit if changes detected
         if: env.changes_detected == 'true'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add ./counter_robots/data/machine.txt ./counter_robots/data/robot.txt
-          git commit -m "Update robots and machines lists"
-          git push
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          file_pattern: 'counter_robots/data/*.txt'
+          commit_message: Update robots and machines lists
 
-      - name: Update version and push release commit
+      - name: Update version
+        id: date
         if: env.changes_detected == 'true'
         run: |
-          NEW_VERSION=$(python bump_version.py)
+          NEW_VERSION=$(date +'%Y.%m')
           echo "new_version=$NEW_VERSION" >> $GITHUB_ENV
+          sed -i 's/^__version__ = .*/__version__ = '"'"$NEW_VERSION"'"'/' counter_robots/version.py
 
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add version.py
-          git commit -m "release: $NEW_VERSION"
-          git push
+      - name: Push release commit
+        if: env.changes_detected == 'true'
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          file_pattern: 'counter_robots/version.py'
+          commit_message: 'release: ${{ env.new_version }}'
 
       - name: Create and push tag
-        if: env.changes_detected == 'true'
         run: |
+          git fetch --tags
           git tag "v${{ env.new_version }}" -a "release: ${{ env.new_version }}"
           git push origin "v${{ env.new_version }}"
